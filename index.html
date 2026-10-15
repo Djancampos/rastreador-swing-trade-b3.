@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Djan • Swing Trade B3</title>
+  <meta name="theme-color" content="#060916">
+  <meta name="description" content="Rastreador de carteira B3, gestão de risco, Stop Loss e alvo de Gain.">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Fonte Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- TradingView Lightweight Charts -->
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    body {
+      background-color: #060916;
+      color: #f1f5f9;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    .card-clear {
+      background-color: #0f1631;
+      border: 1px solid #1e295b;
+    }
+    .bg-header {
+      background: linear-gradient(180deg, #0d1536 0%, #060916 100%);
+    }
+    input[type=range] {
+      accent-color: #38bdf8;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d1f;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e295b;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #38bdf8;
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-16">
+
+  <!-- Notificação Flutuante (Substitui alert/confirm) -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+  <!-- Cabeçalho Principal -->
+  <header class="bg-header border-b border-slate-800/90 sticky top-0 z-30 px-4 py-3 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-3">
+      <!-- Identificação do Investidor -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-indigo-950 border-2 border-sky-400 flex items-center justify-center font-bold text-sm text-sky-200 shadow-lg shadow-sky-500/10">
+          DS
+        </div>
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h1 class="font-bold text-base sm:text-lg leading-tight text-white">Djan • Swing Trade & Gestão de Risco B3</h1>
+            <span id="api-badge" class="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-slate-500" id="api-dot"></span>
+              <span id="api-status-text">Modo Simulador</span>
+            </span>
+          </div>
+          <p class="text-xs text-slate-400">Clear Corretora & TradingView • Calculadora de Stop Loss, Proteção & Alvo de Gain</p>
+        </div>
+      </div>
+
+      <!-- Ações e Alternador de Abas -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <button onclick="toggleApiDrawer()" class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-950/90 hover:bg-indigo-900 text-sky-300 border border-indigo-700/80 transition flex items-center gap-1.5">
+          <span>🔑</span> Configurar Chave API
+        </button>
+
+        <div class="flex bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+          <button id="tab-portfolio" onclick="switchTab('portfolio')" class="px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-sky-500 text-slate-950 transition">
+            1. Carteira & Stop Loss
+          </button>
+          <button id="tab-chart" onclick="switchTab('chart')" class="px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white transition">
+            2. Gráfico TradingView
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Painel de Conexão API Brapi.dev (Gaveta Expansível) -->
+    <div id="api-drawer" class="hidden max-w-6xl mx-auto mt-3 pt-3 border-t border-slate-800/80">
+      <div class="bg-slate-900/90 border border-sky-500/30 rounded-xl p-3.5 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold uppercase tracking-wider text-sky-400">Conexão B3 em Tempo Real (Brapi.dev)</span>
+            <span id="last-sync-label" class="text-[11px] text-slate-400">Aguardando chave...</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Cole seu Token gratuito da <strong>brapi.dev</strong> abaixo. Sua chave e seus níveis de Stop Loss ficam salvos apenas neste aparelho (<code class="text-sky-300">localStorage</code>).
+          </p>
+        </div>
+
+        <div class="flex flex-wrap sm:flex-nowrap items-center gap-2">
+          <div class="relative flex-1 sm:w-64">
+            <input id="brapi-token-input" type="password" placeholder="Cole seu Token da Brapi aqui..."
+              class="w-full bg-slate-950 border border-slate-700 focus:border-sky-400 rounded-lg pl-3 pr-9 py-1.5 text-xs text-white focus:outline-none" />
+            <button type="button" onclick="toggleTokenVisibility()" title="Mostrar/Ocultar Chave"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs">
+              👁️
+            </button>
+          </div>
+
+          <select id="auto-refresh-select" onchange="setupAutoRefresh()"
+            class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-400">
+            <option value="0">Auto: Manual</option>
+            <option value="300000">Auto: 5 min</option>
+            <option value="900000">Auto: 15 min</option>
+          </select>
+
+          <button id="btn-sync-now" onclick="saveTokenAndSync()"
+            class="px-3.5 py-1.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-lg text-xs transition shrink-0 flex items-center gap-1.5 shadow-md shadow-sky-500/10">
+            <span>🔄</span> Salvar & Atualizar B3
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 mt-5">
+
+    <!-- Resumo Superior da Conta + Gestão de Risco Consolidada -->
+    <section class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+      <div class="card-clear p-3.5 rounded-xl">
+        <span class="text-xs text-slate-400 block">Saldo Disponível</span>
+        <strong class="text-base sm:text-lg text-white">R$ 16.106,95</strong>
+        <span class="text-[11px] text-slate-400 block mt-0.5">Garantia: R$ 15.251,45</span>
+      </div>
+
+      <div class="card-clear p-3.5 rounded-xl">
+        <span class="text-xs text-slate-400 block">Total Líquido na Bolsa</span>
+        <strong id="tot-liquido" class="text-base sm:text-lg text-white">R$ 5.475,00</strong>
+        <span id="tot-bruto-sub" class="text-[11px] text-slate-400 block mt-0.5">Comp. - Vend.</span>
+      </div>
+
+      <div class="card-clear p-3.5 rounded-xl">
+        <span class="text-xs text-slate-400 block">Resultado do Dia</span>
+        <strong id="res-dia-total" class="text-base sm:text-lg">R$ 0,00</strong>
+        <span id="res-dia-pct" class="text-[11px] block mt-0.5">0,00% hoje</span>
+      </div>
+
+      <div class="card-clear p-3.5 rounded-xl">
+        <span class="text-xs text-slate-400 block">Resultado Total vs. PM</span>
+        <strong id="res-pm-total" class="text-base sm:text-lg">R$ 0,00</strong>
+        <span id="res-pm-pct" class="text-[11px] block mt-0.5">0,00% acumulado</span>
+      </div>
+
+      <!-- NOVO CARD: Risco Total nos Stops + Potencial nos Alvos -->
+      <div class="card-clear p-3.5 rounded-xl border-rose-500/30">
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-slate-300 font-medium">Risco se Pegar Stops</span>
+          <span class="text-[10px] px-1.5 py-0.5 bg-rose-500/20 text-rose-300 rounded font-bold">STOP</span>
+        </div>
+        <strong id="res-stop-from-curr" class="text-base sm:text-lg text-rose-400">R$ 0,00</strong>
+        <span id="res-target-from-curr" class="text-[11px] text-emerald-400 block mt-0.5">Alvos: +R$ 0,00</span>
+      </div>
+
+      <div class="card-clear p-3.5 rounded-xl flex flex-col justify-between cursor-pointer hover:border-sky-500/50 transition" onclick="openChartFor('IBOV')">
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-slate-400 font-semibold">IBOVESPA</span>
+          <span class="text-[10px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 rounded font-bold">B3 • 1D</span>
+        </div>
+        <strong id="ibov-pts" class="text-base text-white">206.505,98</strong>
+        <span id="ibov-var" class="text-xs text-rose-400 font-medium">-381,54 (-0,18%)</span>
+      </div>
+    </section>
+
+    <!-- Barra de Controles de Simulação e Gestão da Carteira -->
+    <section class="card-clear p-3.5 rounded-xl mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <span class="text-xs sm:text-sm font-semibold text-sky-400">Simulador & Proteção:</span>
+        <span class="text-xs text-slate-400 hidden sm:inline">Ajuste o Stop Loss e o Alvo de Gain de cada ativo ou simule oscilações na B3:</span>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="syncWithBrapi()" class="px-3 py-1.5 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded-lg text-xs font-semibold transition">
+          🔄 Puxar Cotações B3
+        </button>
+        <button onclick="applyMarketShock(-0.02)" class="px-3 py-1.5 bg-rose-950/90 hover:bg-rose-900 text-rose-300 border border-rose-700/70 rounded-lg text-xs font-semibold transition">
+          Simular Queda (-2%)
+        </button>
+        <button onclick="applyMarketShock(0.02)" class="px-3 py-1.5 bg-emerald-950/90 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/70 rounded-lg text-xs font-semibold transition">
+          Simular Alta (+2%)
+        </button>
+        <button onclick="toggleNewAssetModal()" class="px-3 py-1.5 bg-indigo-950 hover:bg-indigo-900 text-indigo-200 border border-indigo-700 rounded-lg text-xs font-semibold transition">
+          + Adicionar Ativo
+        </button>
+        <button onclick="resetToOriginalPrints()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold transition">
+          Restaurar Padrão
+        </button>
+      </div>
+    </section>
+
+    <!-- Modal para Adicionar Novo Ativo na Carteira -->
+    <div id="new-asset-box" class="hidden card-clear p-4 rounded-xl mb-6 border-sky-500/50">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-sm font-bold text-white">Adicionar Nova Posição com Stop & Alvo</h3>
+        <button onclick="toggleNewAssetModal()" class="text-xs text-slate-400 hover:text-white">✕ Fechar</button>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 items-end">
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Código (Ticker)</label>
+          <input id="new-ticker" type="text" placeholder="Ex: PETR4" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs uppercase text-white" />
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Empresa</label>
+          <input id="new-name" type="text" placeholder="Petrobras PN" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white" />
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Posição</label>
+          <select id="new-type" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white">
+            <option value="LONG">Comprado (Long)</option>
+            <option value="SHORT">Vendido (Short)</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Quantidade</label>
+          <input id="new-qty" type="number" step="1" value="100" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white" />
+        </div>
+        <div>
+          <label class="text-[11px] text-slate-400 block mb-1">Preço Médio (R$)</label>
+          <input id="new-avg" type="number" step="0.01" placeholder="25.00" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white" />
+        </div>
+        <div>
+          <label class="text-[11px] text-rose-400 block mb-1">Stop Loss (R$)</label>
+          <input id="new-stop" type="number" step="0.01" placeholder="23.50" class="w-full bg-slate-950 border border-rose-800/80 rounded-lg px-2.5 py-1.5 text-xs text-rose-300" />
+        </div>
+        <div>
+          <label class="text-[11px] text-emerald-400 block mb-1">Alvo Gain (R$)</label>
+          <input id="new-target" type="number" step="0.01" placeholder="29.00" class="w-full bg-slate-950 border border-emerald-800/80 rounded-lg px-2.5 py-1.5 text-xs text-emerald-300" />
+        </div>
+        <div>
+          <button onclick="addNewAsset()" class="w-full py-1.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-lg text-xs transition">
+            Salvar Ativo
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================================================================== -->
+    <!-- INTERFACE 1: MINHA CARTEIRA, OSCILAÇÃO & GESTÃO DE STOP LOSS           -->
+    <!-- ====================================================================== -->
+    <div id="view-portfolio" class="space-y-4">
+      <div class="flex flex-wrap justify-between items-center gap-2">
+        <h2 id="portfolio-count-title" class="text-sm sm:text-base font-bold text-slate-200">Meus Ativos em Carteira (5 ativos)</h2>
+        <span class="text-xs text-slate-400">Defina seu <strong>Stop Loss</strong> e seu <strong>Alvo (Gain)</strong> em cada card para saber exatamente quanto arrisca e quanto pode lucrar</span>
+      </div>
+
+      <div id="portfolio-cards" class="grid grid-cols-1 md:grid-cols-2 gap-5"></div>
+    </div>
+
+    <!-- ====================================================================== -->
+    <!-- INTERFACE 2: GRÁFICO TRADINGVIEW COM LINHAS DE PM, STOP E ALVO         -->
+    <!-- ====================================================================== -->
+    <div id="view-chart" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Coluna do Gráfico Candlestick (2/3 da largura no desktop) -->
+      <div class="lg:col-span-2 card-clear rounded-2xl p-4 flex flex-col">
+        <!-- Cabeçalho do Gráfico -->
+        <div class="flex flex-wrap justify-between items-center gap-2 pb-3 mb-3 border-b border-slate-800">
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h3 id="chart-ticker-title" class="text-xl font-bold text-white">QUAL3</h3>
+              <span id="chart-pos-badge" class="text-xs px-2.5 py-0.5 rounded-full font-semibold"></span>
+              <span id="chart-source-badge" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">Candles Diários (1D)</span>
+            </div>
+            <p id="chart-company-name" class="text-xs text-slate-400 mt-0.5">Qualicorp Consultoria e Corretora • BMFBOVESPA</p>
+          </div>
+          <div class="text-right">
+            <div id="chart-current-price" class="text-xl font-bold text-white">R$ 2,15</div>
+            <div id="chart-day-change" class="text-xs font-medium"></div>
+          </div>
+        </div>
+
+        <!-- Container do Gráfico TradingView Lightweight Charts -->
+        <div id="tv-chart-container" class="w-full h-[390px] rounded-xl overflow-hidden border border-slate-800/90 relative"></div>
+
+        <!-- Controles Rápidos de Stop Loss e Alvo Direto no Gráfico -->
+        <div id="chart-risk-controls" class="mt-3 p-3 rounded-xl bg-slate-900/90 border border-slate-800 hidden"></div>
+
+        <!-- Resumo Estratégico da Operação Abaixo do Gráfico -->
+        <div id="chart-strategy-box" class="mt-3 p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 text-xs space-y-1.5"></div>
+      </div>
+
+      <!-- Coluna Lateral: Watchlist & Carteira (1/3 da largura) -->
+      <div class="card-clear rounded-2xl p-4 flex flex-col h-[620px]">
+        <div class="flex justify-between items-center pb-3 mb-2 border-b border-slate-800">
+          <div>
+            <h3 class="font-bold text-sm text-white">Minha Lista B3</h3>
+            <p class="text-[11px] text-slate-400">Carteira Swing Trade + Watchlist TradingView</p>
+          </div>
+          <button onclick="syncWithBrapi()" class="text-[11px] px-2.5 py-1 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 rounded-lg font-semibold transition">
+            🔄 Atualizar
+          </button>
+        </div>
+        <div id="watchlist-container" class="overflow-y-auto space-y-1 pr-1 flex-1"></div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script>
+    // ==========================================================================
+    // 1. DADOS INICIAIS REAIS + NÍVEIS PADRÃO DE STOP LOSS E ALVO (GAIN)
+    // ==========================================================================
+    const DEFAULT_PORTFOLIO = [
+      {
+        ticker: 'BPAC3',
+        name: 'BTG Pactual ON',
+        type: 'LONG',
+        qty: 150,
+        avgPrice: 37.07,
+        prevClose: 26.70,
+        currentPrice: 26.53,
+        stopPrice: 24.80,   // Stop Loss de proteção abaixo da cotação atual
+        targetPrice: 39.50, // Alvo de saída no lucro acima do PM
+        color: '#06b6d4',
+        historicalCandles: null
+      },
+      {
+        ticker: 'TEND3',
+        name: 'Construtora Tenda SA',
+        type: 'LONG',
+        qty: 100,
+        avgPrice: 31.00,
+        prevClose: 30.05,
+        currentPrice: 28.33,
+        stopPrice: 26.50,
+        targetPrice: 35.00,
+        color: '#ef4444',
+        historicalCandles: null
+      },
+      {
+        ticker: 'RCSL4',
+        name: 'Recrusul PN',
+        type: 'LONG',
+        qty: 1850,
+        avgPrice: 3.96,
+        prevClose: 0.97,
+        currentPrice: 0.93,
+        stopPrice: 0.80,
+        targetPrice: 1.50,
+        color: '#3b82f6',
+        historicalCandles: null
+      },
+      {
+        ticker: 'CSNA3',
+        name: 'Companhia Siderúrgica Nacional',
+        type: 'LONG',
+        qty: 200,
+        avgPrice: 9.73,
+        prevClose: 6.45,
+        currentPrice: 6.21,
+        stopPrice: 5.70,
+        targetPrice: 8.50,
+        color: '#2563eb',
+        historicalCandles: null
+      },
+      {
+        ticker: 'QUAL3',
+        name: 'Qualicorp Consultoria e Corretora',
+        type: 'SHORT', // Posição Vendida: Ganha na queda!
+        qty: 2000,
+        avgPrice: 2.44,    // Entrada vendida no topo (TradingView)
+        prevClose: 2.27,
+        currentPrice: 2.15,
+        stopPrice: 2.35,   // Stop Gain (abaixo da venda R$ 2,44, garantindo lucro mesmo se repicar!)
+        targetPrice: 1.85, // Alvo de recompra na queda
+        color: '#0ea5e9',
+        historicalCandles: null
+      }
+    ];
+
+    const DEFAULT_WATCHLIST = [
+      { ticker: 'IBOV', apiSymbol: '^BVSP', name: 'Índice Bovespa', price: 206505.98, prevClose: 206887.52, changePct: -0.18, historicalCandles: null },
+      { ticker: 'WEGE3', apiSymbol: 'WEGE3', name: 'WEG SA', price: 50.44, prevClose: 50.81, changePct: -0.73, historicalCandles: null },
+      { ticker: 'PRIO3', apiSymbol: 'PRIO3', name: 'Prio SA', price: 68.29, prevClose: 66.76, changePct: 2.29, historicalCandles: null },
+      { ticker: 'BEEF3', apiSymbol: 'BEEF3', name: 'Minerva S.A.', price: 4.18, prevClose: 4.36, changePct: -4.13, historicalCandles: null },
+      { ticker: 'CMIN3', apiSymbol: 'CMIN3', name: 'CSN Mineração SA', price: 5.02, prevClose: 4.97, changePct: 1.01, historicalCandles: null },
+      { ticker: 'PSSA3', apiSymbol: 'PSSA3', name: 'Porto Seguro S.A.', price: 53.05, prevClose: 52.76, changePct: 0.55, historicalCandles: null },
+      { ticker: 'CYRE3', apiSymbol: 'CYRE3', name: 'Cyrela Brazil Realty', price: 32.45, prevClose: 33.91, changePct: -4.31, historicalCandles: null },
+      { ticker: 'LWSA3', apiSymbol: 'LWSA3', name: 'LWSA S.A.', price: 5.30, prevClose: 5.50, changePct: -3.64, historicalCandles: null },
+      { ticker: 'EQTL3', apiSymbol: 'EQTL3', name: 'Equatorial S.A.', price: 49.00, prevClose: 49.20, changePct: -0.41, historicalCandles: null },
+      { ticker: 'RENT3', apiSymbol: 'RENT3', name: 'Localiza ON', price: 50.29, prevClose: 50.02, changePct: 0.54, historicalCandles: null }
+    ];
+
+    // Estado do Aplicativo
+    let portfolio = [];
+    let watchlist = [];
+    let selectedTicker = 'QUAL3';
+    let tvChart = null;
+    let candleSeries = null;
+    let avgPriceLine = null;
+    let stopPriceLine = null;
+    let targetPriceLine = null;
+    let autoRefreshTimer = null;
+
+    // ==========================================================================
+    // 2. UTILITÁRIOS DE FORMATAÇÃO, PERSISTÊNCIA E NOTIFICAÇÃO
+    // ==========================================================================
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const colors = {
+        success: 'bg-emerald-950 border-emerald-500 text-emerald-200',
+        error: 'bg-rose-950 border-rose-500 text-rose-200',
+        info: 'bg-slate-900 border-sky-500 text-sky-200'
+      };
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto border-l-4 p-3.5 rounded-xl shadow-xl text-xs font-medium transition-all duration-300 ${colors[type] || colors.info}`;
+      toast.innerHTML = `<div class="flex justify-between items-center gap-2"><span>${msg}</span></div>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    function formatBRL(val, showSign = false) {
+      const sign = val > 0 && showSign ? '+' : '';
+      return sign + val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    function formatPct(val, showSign = false) {
+      const sign = val > 0 && showSign ? '+' : '';
+      return sign + val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+    }
+
+    function saveStateToStorage() {
+      try {
+        const cleanPortfolio = portfolio.map(a => ({
+          ticker: a.ticker,
+          name: a.name,
+          type: a.type,
+          qty: a.qty,
+          avgPrice: a.avgPrice,
+          prevClose: a.prevClose,
+          currentPrice: a.currentPrice,
+          stopPrice: a.stopPrice,
+          targetPrice: a.targetPrice,
+          color: a.color
+        }));
+        localStorage.setItem('djan_b3_portfolio_v2', JSON.stringify(cleanPortfolio));
+      } catch (e) {
+        console.warn('Não foi possível salvar no localStorage:', e);
+      }
+    }
+
+    function loadStateFromStorage() {
+      try {
+        // Migra ou carrega versão v2 com Stop Loss e Alvo
+        const savedPortV2 = localStorage.getItem('djan_b3_portfolio_v2');
+        const savedPortV1 = localStorage.getItem('djan_b3_portfolio_v1');
+
+        if (savedPortV2) {
+          portfolio = JSON.parse(savedPortV2);
+        } else if (savedPortV1) {
+          const oldPort = JSON.parse(savedPortV1);
+          portfolio = oldPort.map(item => {
+            const def = DEFAULT_PORTFOLIO.find(d => d.ticker === item.ticker);
+            return {
+              ...item,
+              stopPrice: item.stopPrice ?? (def ? def.stopPrice : +(item.currentPrice * (item.type === 'SHORT' ? 1.06 : 0.94)).toFixed(2)),
+              targetPrice: item.targetPrice ?? (def ? def.targetPrice : +(item.currentPrice * (item.type === 'SHORT' ? 0.88 : 1.12)).toFixed(2))
+            };
+          });
+          saveStateToStorage();
+        } else {
+          portfolio = JSON.parse(JSON.stringify(DEFAULT_PORTFOLIO));
+        }
+
+        watchlist = JSON.parse(JSON.stringify(DEFAULT_WATCHLIST));
+
+        const savedToken = localStorage.getItem('brapi_token_djan');
+        if (savedToken) {
+          document.getElementById('brapi-token-input').value = savedToken;
+        } else {
+          document.getElementById('api-drawer').classList.remove('hidden');
+        }
+      } catch (e) {
+        portfolio = JSON.parse(JSON.stringify(DEFAULT_PORTFOLIO));
+        watchlist = JSON.parse(JSON.stringify(DEFAULT_WATCHLIST));
+      }
+    }
+
+    // ==========================================================================
+    // 3. CÁLCULO FINANCEIRO COMPLETO (LONG, SHORT, STOP LOSS, STOP GAIN E ALVO)
+    // ==========================================================================
+    function calcMetrics(asset) {
+      const isShort = asset.type === 'SHORT';
+      const posValue = isShort ? -(asset.qty * asset.currentPrice) : (asset.qty * asset.currentPrice);
+
+      // Oscilação da Ação na B3 Hoje
+      const stockDayDiff = asset.currentPrice - asset.prevClose;
+      const stockDayPct = asset.prevClose > 0 ? (stockDayDiff / asset.prevClose) * 100 : 0;
+
+      // Resultado Financeiro do Dia (Se SHORT, queda = lucro)
+      const finDayPL = isShort
+        ? (asset.prevClose - asset.currentPrice) * asset.qty
+        : (asset.currentPrice - asset.prevClose) * asset.qty;
+      const finDayPct = isShort ? -stockDayPct : stockDayPct;
+
+      // Resultado Acumulado vs. Preço Médio (PM)
+      let finTotalPL = 0;
+      let finTotalPct = 0;
+      if (asset.avgPrice > 0) {
+        finTotalPL = isShort
+          ? (asset.avgPrice - asset.currentPrice) * asset.qty
+          : (asset.currentPrice - asset.avgPrice) * asset.qty;
+        finTotalPct = isShort
+          ? ((asset.avgPrice - asset.currentPrice) / asset.avgPrice) * 100
+          : ((asset.currentPrice - asset.avgPrice) / asset.avgPrice) * 100;
+      }
+
+      // ------------------------------------------------------------------------
+      // Cálculos de Gestão de Risco: STOP LOSS & ALVO DE GAIN
+      // ------------------------------------------------------------------------
+      const stopPrice = Number(asset.stopPrice) || 0;
+      const targetPrice = Number(asset.targetPrice) || 0;
+
+      // 1. Impacto a partir da Cotação Atual se bater no Stop (Quanto perco/vario de hoje até o Stop)
+      let stopFromCurrPL = 0;
+      let stopDistPct = 0;
+      // 2. Resultado Final vs. Preço Médio se bater no Stop (Lucro/Prejuízo fechado na operação)
+      let stopFromAvgPL = 0;
+      let isStopGain = false; // Quando o Stop já está posicionado no lucro (acima do PM no Long, ou abaixo do PM no Short)
+
+      if (stopPrice > 0) {
+        stopFromCurrPL = isShort
+          ? (asset.currentPrice - stopPrice) * asset.qty
+          : (stopPrice - asset.currentPrice) * asset.qty;
+
+        stopDistPct = asset.currentPrice > 0
+          ? ((stopPrice - asset.currentPrice) / asset.currentPrice) * 100
+          : 0;
+
+        if (asset.avgPrice > 0) {
+          stopFromAvgPL = isShort
+            ? (asset.avgPrice - stopPrice) * asset.qty
+            : (stopPrice - asset.avgPrice) * asset.qty;
+          isStopGain = stopFromAvgPL > 0;
+        }
+      }
+
+      // 3. Impacto até o Alvo (Gain) a partir da Cotação Atual e vs. PM
+      let targetFromCurrPL = 0;
+      let targetDistPct = 0;
+      let targetFromAvgPL = 0;
+
+      if (targetPrice > 0) {
+        targetFromCurrPL = isShort
+          ? (asset.currentPrice - targetPrice) * asset.qty
+          : (targetPrice - asset.currentPrice) * asset.qty;
+
+        targetDistPct = asset.currentPrice > 0
+          ? ((targetPrice - asset.currentPrice) / asset.currentPrice) * 100
+          : 0;
+
+        if (asset.avgPrice > 0) {
+          targetFromAvgPL = isShort
+            ? (asset.avgPrice - targetPrice) * asset.qty
+            : (targetPrice - asset.avgPrice) * asset.qty;
+        }
+      }
+
+      // 4. Relação Risco x Retorno (Payoff Ratio) a partir do preço atual
+      const riskAbs = Math.abs(stopFromCurrPL);
+      const rewardAbs = Math.max(0, targetFromCurrPL);
+      const rrRatio = riskAbs > 0 ? (rewardAbs / riskAbs) : 0;
+
+      // 5. Status de Alerta se o preço atual já violou o Stop ou atingiu o Alvo
+      let stopTriggered = false;
+      let targetReached = false;
+      if (stopPrice > 0) {
+        stopTriggered = isShort ? (asset.currentPrice >= stopPrice) : (asset.currentPrice <= stopPrice);
+      }
+      if (targetPrice > 0) {
+        targetReached = isShort ? (asset.currentPrice <= targetPrice) : (asset.currentPrice >= targetPrice);
+      }
+
+      // 6. Posição percentual na barra termômetro entre Stop (0%) e Alvo (100%)
+      let progressPct = 50;
+      if (stopPrice > 0 && targetPrice > 0 && stopPrice !== targetPrice) {
+        const raw = ((asset.currentPrice - stopPrice) / (targetPrice - stopPrice)) * 100;
+        progressPct = Math.max(0, Math.min(100, raw));
+      }
+
+      return {
+        isShort,
+        posValue,
+        stockDayDiff,
+        stockDayPct,
+        finDayPL,
+        finDayPct,
+        finTotalPL,
+        finTotalPct,
+        stopPrice,
+        targetPrice,
+        stopFromCurrPL,
+        stopDistPct,
+        stopFromAvgPL,
+        isStopGain,
+        targetFromCurrPL,
+        targetDistPct,
+        targetFromAvgPL,
+        rrRatio,
+        stopTriggered,
+        targetReached,
+        progressPct
+      };
+    }
+
+    // ==========================================================================
+    // 4. RENDERIZAÇÃO DOS CARDS DA CARTEIRA + GESTÃO DE STOP LOSS (INTERFACE 1)
+    // ==========================================================================
+    function renderPortfolio() {
+      const container = document.getElementById('portfolio-cards');
+      container.innerHTML = '';
+      document.getElementById('portfolio-count-title').textContent = `Meus Ativos em Carteira (${portfolio.length} ativos)`;
+
+      let sumNetPos = 0;
+      let sumLongPos = 0;
+      let sumShortPos = 0;
+      let sumDayPL = 0;
+      let sumTotalPL = 0;
+      let sumInvestedRef = 0;
+      let sumStopFromCurr = 0;
+      let sumTargetFromCurr = 0;
+
+      portfolio.forEach((asset, idx) => {
+        const m = calcMetrics(asset);
+        sumNetPos += m.posValue;
+        if (m.isShort) sumShortPos += Math.abs(m.posValue);
+        else sumLongPos += m.posValue;
+
+        sumDayPL += m.finDayPL;
+        sumTotalPL += m.finTotalPL;
+        sumInvestedRef += asset.qty * (asset.avgPrice || asset.currentPrice);
+        sumStopFromCurr += m.stopFromCurrPL;
+        sumTargetFromCurr += m.targetFromCurrPL;
+
+        const dayColor = m.finDayPL >= 0 ? 'text-emerald-400' : 'text-rose-400';
+        const totColor = m.finTotalPL >= 0 ? 'text-emerald-400' : 'text-rose-400';
+        const badgeClass = m.isShort
+          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+          : 'bg-sky-500/20 text-sky-300 border border-sky-500/40 hover:bg-sky-500/30';
+
+        // Badge de Risco x Retorno
+        let rrBadgeClass = 'bg-slate-800 text-slate-300';
+        if (m.rrRatio >= 2) rrBadgeClass = 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        else if (m.rrRatio >= 1) rrBadgeClass = 'bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        else if (m.rrRatio > 0) rrBadgeClass = 'bg-rose-500/20 text-rose-300 border border-rose-500/40';
+
+        // Banner de Alerta se atingiu Stop ou Alvo
+        let statusAlertHtml = '';
+        if (m.stopTriggered) {
+          statusAlertHtml = `
+            <div class="mb-2.5 px-3 py-1.5 rounded-lg bg-rose-950/90 border border-rose-500/70 text-rose-200 text-xs font-semibold flex items-center justify-between">
+              <span>🚨 ATENÇÃO: Cotação (${formatBRL(asset.currentPrice)}) atingiu seu STOP (${formatBRL(m.stopPrice)})!</span>
+              <span class="underline cursor-pointer" onclick="openChartFor('${asset.ticker}')">Ver Gráfico</span>
+            </div>
+          `;
+        } else if (m.targetReached) {
+          statusAlertHtml = `
+            <div class="mb-2.5 px-3 py-1.5 rounded-lg bg-emerald-950/90 border border-emerald-500/70 text-emerald-200 text-xs font-semibold flex items-center justify-between">
+              <span>🎯 ALVO ATINGIDO! Cotação (${formatBRL(asset.currentPrice)}) chegou no seu Gain (${formatBRL(m.targetPrice)})!</span>
+              <span class="underline cursor-pointer" onclick="openChartFor('${asset.ticker}')">Ver Gráfico</span>
+            </div>
+          `;
+        }
+
+        const minSlider = Math.max(0.05, +(asset.prevClose * 0.80).toFixed(2));
+        const maxSlider = +(asset.prevClose * 1.20).toFixed(2);
+
+        const card = document.createElement('div');
+        card.className = 'card-clear rounded-2xl p-4 flex flex-col justify-between transition hover:border-slate-600 shadow-lg';
+        card.innerHTML = `
+          <div>
+            ${statusAlertHtml}
+
+            <!-- Topo do Card -->
+            <div class="flex justify-between items-start gap-2 mb-3">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs text-white shadow" style="background-color: ${asset.color || '#0ea5e9'}">
+                  ${asset.ticker.slice(0, 5)}
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <h3 class="font-bold text-base text-white">${asset.ticker}</h3>
+                    <button onclick="togglePositionType(${idx})" title="Clique para alternar entre Comprado e Vendido"
+                      class="text-[11px] px-2 py-0.5 rounded-md font-semibold cursor-pointer transition ${badgeClass}">
+                      ${m.isShort ? '▼ VENDIDO (SHORT)' : '▲ COMPRADO (LONG)'}
+                    </button>
+                  </div>
+                  <p class="text-xs text-slate-400 mt-0.5">${asset.name}</p>
+                </div>
+              </div>
+
+              <div class="text-right">
+                <div class="text-base font-bold text-white">${formatBRL(m.posValue)}</div>
+                <div class="text-xs font-semibold ${totColor}">
+                  ${m.finTotalPL >= 0 ? '▲' : '▼'} ${formatBRL(Math.abs(m.finTotalPL))} (${formatPct(m.finTotalPct, true)})
+                </div>
+              </div>
+            </div>
+
+            <!-- Tabela de Indicadores do Ativo -->
+            <div class="grid grid-cols-2 gap-y-1.5 text-xs border-t border-b border-slate-800/90 py-2.5 my-2">
+              <div class="text-slate-400 flex items-center">Quantidade (${m.isShort ? 'Vendida' : 'Comprada'}):</div>
+              <div class="text-right font-medium text-white flex justify-end items-center gap-1">
+                <span class="text-slate-400">${m.isShort ? '-' : ''}</span>
+                <input type="number" step="1" min="1" value="${asset.qty}"
+                  onchange="updateQty(${idx}, this.value)"
+                  class="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-right text-xs text-white focus:outline-none focus:border-sky-400" />
+              </div>
+
+              <div class="text-slate-400 flex items-center">Preço médio ${m.isShort ? '(Entrada Alta)' : '(Compra)'}:</div>
+              <div class="text-right font-medium text-white flex justify-end items-center gap-1">
+                <span class="text-slate-400">R$</span>
+                <input type="number" step="0.01" min="0" value="${asset.avgPrice}"
+                  onchange="updateAvgPrice(${idx}, this.value)"
+                  class="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-right text-xs text-sky-300 font-semibold focus:outline-none focus:border-sky-400" />
+              </div>
+
+              <div class="text-slate-400">Cotação atual vs. Fech. (${formatBRL(asset.prevClose)}):</div>
+              <div class="text-right font-semibold text-white">
+                ${formatBRL(asset.currentPrice)}
+                <span class="${m.stockDayDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                  (${formatPct(m.stockDayPct, true)})
+                </span>
+              </div>
+
+              <div class="text-slate-400">Resultado Total vs. PM:</div>
+              <div class="text-right font-semibold ${totColor}">
+                ${m.finTotalPL >= 0 ? '▲' : '▼'} ${formatBRL(m.finTotalPL, true)} (${formatPct(m.finTotalPct, true)})
+              </div>
+
+              <div class="text-slate-300 font-medium">Resultado do Dia (Seu Bolso):</div>
+              <div class="text-right font-bold text-sm ${dayColor}">
+                ${m.finDayPL >= 0 ? '▲' : '▼'} ${formatBRL(m.finDayPL, true)} (${formatPct(m.finDayPct, true)})
+              </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- NOVO BLOCO: GESTÃO DE RISCO (STOP LOSS & ALVO DE GAIN)       -->
+            <!-- ============================================================ -->
+            <div class="bg-slate-950/80 border border-slate-800/90 rounded-xl p-3 my-2.5 space-y-2.5">
+              <div class="flex flex-wrap justify-between items-center gap-1">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-200">🛡️ Gestão de Stop & Alvo</span>
+                  ${m.isStopGain ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold">🔒 Stop Gain (Lucro Travado!)</span>` : ''}
+                </div>
+                <span class="text-[10px] px-2 py-0.5 rounded font-semibold ${rrBadgeClass}">
+                  Risco/Retorno: 1 : ${m.rrRatio > 0 ? m.rrRatio.toFixed(1) : '0.0'}
+                </span>
+              </div>
+
+              <!-- Inputs de Preço de Stop e Preço de Alvo -->
+              <div class="grid grid-cols-2 gap-2.5">
+                <!-- Caixa Stop Loss -->
+                <div class="bg-rose-950/25 border border-rose-900/60 rounded-lg p-2">
+                  <div class="flex justify-between items-center mb-1">
+                    <label class="text-[11px] font-semibold text-rose-300">
+                      ${m.isShort ? 'Stop (Acima ↑)' : 'Stop Loss (Abaixo ↓)'}
+                    </label>
+                    <span class="text-[10px] text-rose-400 font-medium">${formatPct(m.stopDistPct, true)}</span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <span class="text-xs text-rose-400 font-semibold">R$</span>
+                    <input type="number" step="0.01" value="${m.stopPrice}"
+                      onchange="updateStopPrice(${idx}, this.value)"
+                      class="w-full bg-slate-950 border border-rose-800/70 focus:border-rose-400 rounded px-2 py-1 text-xs font-bold text-rose-200 focus:outline-none" />
+                  </div>
+                  <div class="mt-1.5 text-[11px] leading-tight space-y-0.5">
+                    <div class="flex justify-between text-slate-400">
+                      <span>De hoje p/ Stop:</span>
+                      <strong class="${m.stopFromCurrPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatBRL(m.stopFromCurrPL, true)}</strong>
+                    </div>
+                    <div class="flex justify-between text-slate-400">
+                      <span>Final vs. PM:</span>
+                      <strong class="${m.stopFromAvgPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatBRL(m.stopFromAvgPL, true)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Caixa Alvo (Take Profit) -->
+                <div class="bg-emerald-950/25 border border-emerald-900/60 rounded-lg p-2">
+                  <div class="flex justify-between items-center mb-1">
+                    <label class="text-[11px] font-semibold text-emerald-300">
+                      ${m.isShort ? 'Alvo Queda (Abaixo ↓)' : 'Alvo Gain (Acima ↑)'}
+                    </label>
+                    <span class="text-[10px] text-emerald-400 font-medium">${formatPct(m.targetDistPct, true)}</span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <span class="text-xs text-emerald-400 font-semibold">R$</span>
+                    <input type="number" step="0.01" value="${m.targetPrice}"
+                      onchange="updateTargetPrice(${idx}, this.value)"
+                      class="w-full bg-slate-950 border border-emerald-800/70 focus:border-emerald-400 rounded px-2 py-1 text-xs font-bold text-emerald-200 focus:outline-none" />
+                  </div>
+                  <div class="mt-1.5 text-[11px] leading-tight space-y-0.5">
+                    <div class="flex justify-between text-slate-400">
+                      <span>De hoje p/ Alvo:</span>
+                      <strong class="${m.targetFromCurrPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatBRL(m.targetFromCurrPL, true)}</strong>
+                    </div>
+                    <div class="flex justify-between text-slate-400">
+                      <span>Final vs. PM:</span>
+                      <strong class="${m.targetFromAvgPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatBRL(m.targetFromAvgPL, true)}</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Termômetro Visual Stop <-> Cotação Atual <-> Alvo -->
+              <div>
+                <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                  <span class="text-rose-400">Stop: ${formatBRL(m.stopPrice)}</span>
+                  <span class="text-slate-300 font-medium">Atual: ${formatBRL(asset.currentPrice)}</span>
+                  <span class="text-emerald-400">Alvo: ${formatBRL(m.targetPrice)}</span>
+                </div>
+                <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800 flex relative">
+                  <div class="h-full bg-gradient-to-r from-rose-500 via-amber-400 to-emerald-500 transition-all duration-300" style="width: ${m.progressPct}%"></div>
+                </div>
+              </div>
+
+              <!-- Atalhos Rápidos de Stop e Alvo -->
+              <div class="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-800/80">
+                <span class="text-[10px] text-slate-400">Ajuste rápido:</span>
+                <div class="flex flex-wrap gap-1.5">
+                  <button onclick="applyQuickStopTarget(${idx}, 0.05, 0.10)"
+                    class="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-medium transition">
+                    ${m.isShort ? 'Stop +5% / Alvo -10%' : 'Stop -5% / Alvo +10%'}
+                  </button>
+                  <button onclick="setStopAtBreakeven(${idx})"
+                    class="px-2 py-0.5 rounded bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-800/60 text-[10px] font-medium transition">
+                    Travar no PM (${formatBRL(asset.avgPrice)})
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Controle Deslizante (Simulador) + Ações -->
+          <div class="mt-1 pt-1">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-1">
+              <span>Simular cotação B3: <strong class="text-white">${formatBRL(asset.currentPrice)}</strong></span>
+              <span class="${m.isShort ? 'text-amber-300' : 'text-sky-300'} font-medium">
+                ${m.isShort ? '📉 Short: Ganha na queda' : '📈 Long: Ganha na alta'}
+              </span>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <input type="range" min="${minSlider}" max="${maxSlider}" step="0.01" value="${asset.currentPrice}"
+                oninput="updateCurrentPrice(${idx}, this.value)"
+                class="w-full h-1.5 bg-slate-800 rounded-lg cursor-pointer" />
+              <button onclick="openChartFor('${asset.ticker}')"
+                class="shrink-0 px-3 py-1.5 bg-sky-500/15 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 rounded-lg text-xs font-semibold transition">
+                📈 Ver no Gráfico
+              </button>
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+
+      // Atualiza Resumo Geral Superior
+      document.getElementById('tot-liquido').textContent = formatBRL(sumNetPos);
+      document.getElementById('tot-bruto-sub').textContent = `Comp: ${formatBRL(sumLongPos)} | Short: -${formatBRL(sumShortPos)}`;
+
+      const resDiaEl = document.getElementById('res-dia-total');
+      const resDiaPctEl = document.getElementById('res-dia-pct');
+      resDiaEl.textContent = (sumDayPL >= 0 ? '▲ ' : '▼ ') + formatBRL(sumDayPL, true);
+      resDiaEl.className = 'text-base sm:text-lg font-bold ' + (sumDayPL >= 0 ? 'text-emerald-400' : 'text-rose-400');
+      const dayPctGlobal = sumNetPos !== 0 ? (sumDayPL / Math.abs(sumNetPos)) * 100 : 0;
+      resDiaPctEl.textContent = `${formatPct(dayPctGlobal, true)} no pregão de hoje`;
+      resDiaPctEl.className = 'text-[11px] block mt-0.5 ' + (sumDayPL >= 0 ? 'text-emerald-400' : 'text-rose-400');
+
+      const resPmEl = document.getElementById('res-pm-total');
+      const resPmPctEl = document.getElementById('res-pm-pct');
+      resPmEl.textContent = (sumTotalPL >= 0 ? '▲ ' : '▼ ') + formatBRL(sumTotalPL, true);
+      resPmEl.className = 'text-base sm:text-lg font-bold ' + (sumTotalPL >= 0 ? 'text-emerald-400' : 'text-rose-400');
+      const pmPctGlobal = sumInvestedRef !== 0 ? (sumTotalPL / sumInvestedRef) * 100 : 0;
+      resPmPctEl.textContent = `${formatPct(pmPctGlobal, true)} vs. Preço Médio`;
+      resPmPctEl.className = 'text-[11px] block mt-0.5 ' + (sumTotalPL >= 0 ? 'text-emerald-400' : 'text-rose-400');
+
+      // Atualiza Card Superior de Risco Total nos Stops e Alvos
+      const stopSumEl = document.getElementById('res-stop-from-curr');
+      const targetSumEl = document.getElementById('res-target-from-curr');
+      stopSumEl.textContent = formatBRL(sumStopFromCurr, true);
+      stopSumEl.className = 'text-base sm:text-lg font-bold ' + (sumStopFromCurr >= 0 ? 'text-emerald-400' : 'text-rose-400');
+      targetSumEl.textContent = `Alvos: ${formatBRL(sumTargetFromCurr, true)}`;
+    }
+
+    // ==========================================================================
+    // 5. FUNÇÕES INTERATIVAS DE EDIÇÃO DE CARTEIRA, STOP E ALVO
+    // ==========================================================================
+    function updateCurrentPrice(idx, val) {
+      portfolio[idx].currentPrice = parseFloat(val);
+      renderPortfolio();
+      if (selectedTicker === portfolio[idx].ticker) updateChartView();
+    }
+
+    function updateAvgPrice(idx, val) {
+      portfolio[idx].avgPrice = parseFloat(val) || 0;
+      saveStateToStorage();
+      renderPortfolio();
+      if (selectedTicker === portfolio[idx].ticker) updateChartView();
+      showToast(`Preço médio de ${portfolio[idx].ticker} atualizado para ${formatBRL(portfolio[idx].avgPrice)}.`, 'info');
+    }
+
+    function updateQty(idx, val) {
+      portfolio[idx].qty = Math.max(1, parseInt(val, 10) || 1);
+      saveStateToStorage();
+      renderPortfolio();
+      if (selectedTicker === portfolio[idx].ticker) updateChartView();
+    }
+
+    function updateStopPrice(idx, val) {
+      portfolio[idx].stopPrice = Math.max(0, parseFloat(val) || 0);
+      saveStateToStorage();
+      renderPortfolio();
+      if (selectedTicker === portfolio[idx].ticker) updateChartView();
+      showToast(`Stop de ${portfolio[idx].ticker} salvo em ${formatBRL(portfolio[idx].stopPrice)}.`, 'info');
+    }
+
+    function updateTargetPrice(idx, val) {
+      portfolio[idx].targetPrice = Math.max(0, parseFloat(val) || 0);
+      saveStateToStorage();
+      renderPortfolio();
+      if (selectedTicker === portfolio[idx].ticker) updateChartView();
+      showToast(`Alvo (Gain) de ${portfolio[idx].ticker} salvo em ${formatBRL(portfolio[idx].targetPrice)}.`, 'success');
+    }
+
+    function applyQuickStopTarget(idx, stopPct, targetPct) {
+      const a = portfolio[idx];
+      if (a.type === 'SHORT') {
+        // Na posição vendida, Stop fica acima da cotação atual (+5%) e Alvo fica abaixo (-10%)
+        a.stopPrice = +(a.currentPrice * (1 + stopPct)).toFixed(2);
+        a.targetPrice = +(a.currentPrice * (1 - targetPct)).toFixed(2);
+      } else {
+        // Na posição comprada, Stop fica abaixo (-5%) e Alvo fica acima (+10%)
+        a.stopPrice = +(a.currentPrice * (1 - stopPct)).toFixed(2);
+        a.targetPrice = +(a.currentPrice * (1 + targetPct)).toFixed(2);
+      }
+      saveStateToStorage();
+      renderPortfolio();
+      if (selectedTicker === a.ticker) updateChartView();
+      showToast(`${a.ticker}: Stop ajustado para ${formatBRL(a.stopPrice)} e Alvo para ${formatBRL(a.targetPrice)}.`, 'info');
+    }
+
+    function setStopAtBreakeven(idx) {
+      const a = portfolio[idx];
+      if (!a.avgPrice || a.avgPrice <= 0) {
+        showToast('Defina primeiro um Preço Médio válido para travar no zero a zero.', 'error');
+        return;
+      }
+      a.stopPrice = a.avgPrice;
+      saveStateToStorage();
+      renderPortfolio();
+      if (selectedTicker === a.ticker) updateChartView();
+      showToast(`Stop de ${a.ticker} posicionado no Preço Médio (${formatBRL(a.avgPrice)} - Zero a Zero).`, 'success');
+    }
+
+    function togglePositionType(idx) {
+      const a = portfolio[idx];
+      a.type = a.type === 'LONG' ? 'SHORT' : 'LONG';
+      // Inverte automaticamente Stop e Alvo caso estejam do lado oposto
+      const tempStop = a.stopPrice;
+      a.stopPrice = a.targetPrice;
+      a.targetPrice = tempStop;
+      saveStateToStorage();
+      renderPortfolio();
+      if (selectedTicker === a.ticker) updateChartView();
+      const modeText = a.type === 'SHORT' ? 'VENDIDO (Ganha na queda)' : 'COMPRADO (Ganha na alta)';
+      showToast(`${a.ticker} alterado para ${modeText}.`, 'info');
+    }
+
+    function applyMarketShock(factor) {
+      portfolio.forEach(a => {
+        a.currentPrice = +(a.currentPrice * (1 + factor)).toFixed(2);
+      });
+      renderPortfolio();
+      if (tvChart) updateChartView();
+    }
+
+    function resetToOriginalPrints() {
+      localStorage.removeItem('djan_b3_portfolio_v2');
+      localStorage.removeItem('djan_b3_portfolio_v1');
+      portfolio = JSON.parse(JSON.stringify(DEFAULT_PORTFOLIO));
+      watchlist = JSON.parse(JSON.stringify(DEFAULT_WATCHLIST));
+      renderPortfolio();
+      if (tvChart) updateChartView();
+      showToast('Valores padrão e níveis de Stop/Alvo restaurados!', 'info');
+    }
+
+    function toggleNewAssetModal() {
+      const box = document.getElementById('new-asset-box');
+      box.classList.toggle('hidden');
+    }
+
+    function addNewAsset() {
+      const ticker = document.getElementById('new-ticker').value.trim().toUpperCase();
+      const name = document.getElementById('new-name').value.trim() || ticker;
+      const type = document.getElementById('new-type').value;
+      const qty = parseInt(document.getElementById('new-qty').value, 10) || 100;
+      const avg = parseFloat(document.getElementById('new-avg').value) || 10.00;
+      const defaultStop = type === 'SHORT' ? +(avg * 1.05).toFixed(2) : +(avg * 0.95).toFixed(2);
+      const defaultTarget = type === 'SHORT' ? +(avg * 0.88).toFixed(2) : +(avg * 1.12).toFixed(2);
+      const stopPrice = parseFloat(document.getElementById('new-stop').value) || defaultStop;
+      const targetPrice = parseFloat(document.getElementById('new-target').value) || defaultTarget;
+
+      if (!ticker) {
+        showToast('Informe o código da ação (ex: PETR4, VALE3).', 'error');
+        return;
+      }
+
+      portfolio.push({
+        ticker,
+        name,
+        type,
+        qty,
+        avgPrice: avg,
+        prevClose: avg,
+        currentPrice: avg,
+        stopPrice,
+        targetPrice,
+        color: '#8b5cf6',
+        historicalCandles: null
+      });
+
+      saveStateToStorage();
+      renderPortfolio();
+      toggleNewAssetModal();
+      showToast(`Ativo ${ticker} adicionado com Stop em ${formatBRL(stopPrice)} e Alvo em ${formatBRL(targetPrice)}!`, 'success');
+    }
+
+    // ==========================================================================
+    // 6. INTEGRAÇÃO REAL COM A API DA B3 (BRAPI.DEV)
+    // ==========================================================================
+    function toggleApiDrawer() {
+      const drawer = document.getElementById('api-drawer');
+      drawer.classList.toggle('hidden');
+    }
+
+    function toggleTokenVisibility() {
+      const input = document.getElementById('brapi-token-input');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    function saveTokenAndSync() {
+      const token = document.getElementById('brapi-token-input').value.trim();
+      if (!token) {
+        showToast('Por favor, cole o seu Token da Brapi.dev no campo antes de sincronizar.', 'error');
+        return;
+      }
+      localStorage.setItem('brapi_token_djan', token);
+      syncWithBrapi();
+    }
+
+    function setupAutoRefresh() {
+      if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+      }
+      const intervalMs = parseInt(document.getElementById('auto-refresh-select').value, 10);
+      if (intervalMs > 0) {
+        autoRefreshTimer = setInterval(() => {
+          syncWithBrapi(true);
+        }, intervalMs);
+        showToast(`Atualização automática ativada a cada ${intervalMs / 60000} minutos.`, 'info');
+      }
+    }
+
+    function setApiStatusUI(status, message) {
+      const dot = document.getElementById('api-dot');
+      const text = document.getElementById('api-status-text');
+      const syncLabel = document.getElementById('last-sync-label');
+
+      if (status === 'loading') {
+        dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-ping';
+        text.textContent = 'Sincronizando B3...';
+      } else if (status === 'connected') {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+        text.textContent = 'B3 Conectada';
+        syncLabel.textContent = message;
+      } else if (status === 'error') {
+        dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        text.textContent = 'Erro na Chave API';
+        syncLabel.textContent = message;
+      }
+    }
+
+    async function syncWithBrapi(silent = false) {
+      const token = (document.getElementById('brapi-token-input').value || localStorage.getItem('brapi_token_djan') || '').trim();
+      if (!token) {
+        if (!silent) {
+          showToast('Cole sua chave da Brapi.dev na barra superior para buscar as cotações oficiais da B3.', 'info');
+          document.getElementById('api-drawer').classList.remove('hidden');
+          document.getElementById('brapi-token-input').focus();
+        }
+        return;
+      }
+
+      const btn = document.getElementById('btn-sync-now');
+      const originalBtnHtml = btn.innerHTML;
+      btn.innerHTML = '<span>⏳</span> Buscando B3...';
+      btn.disabled = true;
+      setApiStatusUI('loading', 'Consultando servidores da B3...');
+
+      try {
+        const portfolioSymbols = portfolio.map(a => a.ticker);
+        const watchSymbols = watchlist.map(w => w.apiSymbol || w.ticker);
+        const allSymbols = [...new Set([...portfolioSymbols, ...watchSymbols])];
+
+        const url = `https://brapi.dev/api/quote/${allSymbols.join(',')}?range=3mo&interval=1d&token=${encodeURIComponent(token)}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(`Código HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.results || !Array.isArray(data.results)) {
+          throw new Error('Formato de resposta inválido da API.');
+        }
+
+        let updatedCount = 0;
+
+        data.results.forEach(quote => {
+          let parsedCandles = null;
+          if (Array.isArray(quote.historicalDataPrice) && quote.historicalDataPrice.length > 5) {
+            const seenTimes = new Set();
+            parsedCandles = quote.historicalDataPrice
+              .filter(c => c.date && c.open != null && c.high != null && c.low != null && c.close != null)
+              .map(c => ({
+                time: c.date,
+                open: +Number(c.open).toFixed(2),
+                high: +Number(c.high).toFixed(2),
+                low: +Number(c.low).toFixed(2),
+                close: +Number(c.close).toFixed(2)
+              }))
+              .sort((a, b) => a.time - b.time)
+              .filter(c => {
+                if (seenTimes.has(c.time)) return false;
+                seenTimes.add(c.time);
+                return true;
+              });
+          }
+
+          const portItem = portfolio.find(a => a.ticker.toUpperCase() === (quote.symbol || '').toUpperCase());
+          if (portItem) {
+            if (typeof quote.regularMarketPrice === 'number') {
+              portItem.currentPrice = quote.regularMarketPrice;
+            }
+            if (typeof quote.regularMarketPreviousClose === 'number' && quote.regularMarketPreviousClose > 0) {
+              portItem.prevClose = quote.regularMarketPreviousClose;
+            }
+            if (parsedCandles && parsedCandles.length > 0) {
+              portItem.historicalCandles = parsedCandles;
+            }
+            updatedCount++;
+          }
+
+          const watchItem = watchlist.find(w =>
+            w.ticker.toUpperCase() === (quote.symbol || '').toUpperCase() ||
+            (w.apiSymbol && w.apiSymbol.toUpperCase() === (quote.symbol || '').toUpperCase())
+          );
+          if (watchItem) {
+            if (typeof quote.regularMarketPrice === 'number') {
+              watchItem.price = quote.regularMarketPrice;
+            }
+            if (typeof quote.regularMarketPreviousClose === 'number') {
+              watchItem.prevClose = quote.regularMarketPreviousClose;
+            }
+            if (typeof quote.regularMarketChangePercent === 'number') {
+              watchItem.changePct = quote.regularMarketChangePercent;
+            }
+            if (parsedCandles && parsedCandles.length > 0) {
+              watchItem.historicalCandles = parsedCandles;
+            }
+
+            if (watchItem.ticker === 'IBOV') {
+              const diffPts = watchItem.price - (watchItem.prevClose || watchItem.price);
+              document.getElementById('ibov-pts').textContent = watchItem.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              const ibovVarEl = document.getElementById('ibov-var');
+              ibovVarEl.textContent = `${diffPts >= 0 ? '+' : ''}${diffPts.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} (${formatPct(watchItem.changePct, true)})`;
+              ibovVarEl.className = 'text-xs font-medium ' + (watchItem.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400');
+            }
+          }
+        });
+
+        saveStateToStorage();
+        renderPortfolio();
+        if (tvChart) updateChartView();
+
+        const nowStr = new Date().toLocaleTimeString('pt-BR');
+        setApiStatusUI('connected', `Última atualização B3 às ${nowStr}`);
+        if (!silent) {
+          showToast(`Sucesso! ${updatedCount} ativos da carteira sincronizados com a B3 (${nowStr}).`, 'success');
+        }
+      } catch (err) {
+        console.warn('Tentando busca individual por ativo:', err);
+        await syncPortfolioIndividually(token, silent);
+      } finally {
+        btn.innerHTML = originalBtnHtml;
+        btn.disabled = false;
+      }
+    }
+
+    async function syncPortfolioIndividually(token, silent = false) {
+      let okCount = 0;
+      for (const item of portfolio) {
+        try {
+          const res = await fetch(`https://brapi.dev/api/quote/${item.ticker}?range=3mo&interval=1d&token=${encodeURIComponent(token)}`);
+          if (!res.ok) continue;
+          const d = await res.json();
+          const q = d.results && d.results[0];
+          if (q) {
+            if (typeof q.regularMarketPrice === 'number') item.currentPrice = q.regularMarketPrice;
+            if (typeof q.regularMarketPreviousClose === 'number' && q.regularMarketPreviousClose > 0) item.prevClose = q.regularMarketPreviousClose;
+            if (Array.isArray(q.historicalDataPrice) && q.historicalDataPrice.length > 5) {
+              const seen = new Set();
+              item.historicalCandles = q.historicalDataPrice
+                .filter(c => c.date && c.open != null && c.close != null)
+                .map(c => ({
+                  time: c.date,
+                  open: +Number(c.open).toFixed(2),
+                  high: +Number(c.high).toFixed(2),
+                  low: +Number(c.low).toFixed(2),
+                  close: +Number(c.close).toFixed(2)
+                }))
+                .sort((a, b) => a.time - b.time)
+                .filter(c => {
+                  if (seen.has(c.time)) return false;
+                  seen.add(c.time);
+                  return true;
+                });
+            }
+            okCount++;
+          }
+        } catch (e) {
+          console.warn('Falha individual em', item.ticker, e);
+        }
+      }
+
+      if (okCount > 0) {
+        saveStateToStorage();
+        renderPortfolio();
+        if (tvChart) updateChartView();
+        const nowStr = new Date().toLocaleTimeString('pt-BR');
+        setApiStatusUI('connected', `Sincronizado às ${nowStr} (${okCount} ativos)`);
+        if (!silent) {
+          showToast(`${okCount} ativos da sua carteira foram atualizados com sucesso via Brapi!`, 'success');
+        }
+      } else {
+        setApiStatusUI('error', 'Token inválido ou sem conexão');
+        if (!silent) {
+          showToast('Erro ao validar sua chave da Brapi. Verifique se copiou o Token inteiro sem espaços.', 'error');
+        }
+      }
+    }
+
+    // ==========================================================================
+    // 7. GRÁFICO TRADINGVIEW COM 3 LINHAS: PREÇO MÉDIO, STOP LOSS E ALVO (GAIN)
+    // ==========================================================================
+    function switchTab(tab) {
+      const pView = document.getElementById('view-portfolio');
+      const cView = document.getElementById('view-chart');
+      const pTab = document.getElementById('tab-portfolio');
+      const cTab = document.getElementById('tab-chart');
+
+      if (tab === 'portfolio') {
+        pView.classList.remove('hidden');
+        cView.classList.add('hidden');
+        pTab.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-sky-500 text-slate-950 transition';
+        cTab.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white transition';
+      } else {
+        pView.classList.add('hidden');
+        cView.classList.remove('hidden');
+        cTab.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-sky-500 text-slate-950 transition';
+        pTab.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold text-slate-300 hover:text-white transition';
+        initOrResizeChart();
+        updateChartView();
+      }
+    }
+
+    function openChartFor(ticker) {
+      selectedTicker = ticker;
+      switchTab('chart');
+    }
+
+    function generateSimulatedCandles(ticker, currentPrice, prevClose) {
+      const data = [];
+      let baseTime = Math.floor(Date.now() / 1000) - (85 * 86400);
+      let price = ticker === 'QUAL3' ? 1.85 : currentPrice * 1.12;
+
+      for (let i = 0; i < 85; i++) {
+        baseTime += 86400;
+        if (ticker === 'QUAL3' && i === 80) price = 2.44;
+        if (i === 83 && prevClose) price = prevClose;
+
+        const vol = price * 0.032;
+        const open = +(price + (Math.random() - 0.48) * vol).toFixed(2);
+        const close = i === 84 ? currentPrice : +(open + (Math.random() - 0.5) * vol).toFixed(2);
+        const high = +(Math.max(open, close) + Math.random() * (vol * 0.65)).toFixed(2);
+        const low = +(Math.min(open, close) - Math.random() * (vol * 0.65)).toFixed(2);
+
+        data.push({ time: baseTime, open, high, low, close });
+        price = close;
+      }
+      return data;
+    }
+
+    function initOrResizeChart() {
+      const container = document.getElementById('tv-chart-container');
+      if (!tvChart) {
+        tvChart = LightweightCharts.createChart(container, {
+          layout: { background: { color: '#070a14' }, textColor: '#94a3b8' },
+          grid: { vertLines: { color: '#131c38' }, horzLines: { color: '#131c38' } },
+          crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+          rightPriceScale: { borderColor: '#1e295b' },
+          timeScale: { borderColor: '#1e295b', timeVisible: true }
+        });
+        candleSeries = tvChart.addCandlestickSeries({
+          upColor: '#10b981',
+          downColor: '#ef4444',
+          borderDownColor: '#ef4444',
+          borderUpColor: '#10b981',
+          wickDownColor: '#ef4444',
+          wickUpColor: '#10b981'
+        });
+
+        window.addEventListener('resize', () => {
+          if (tvChart && !document.getElementById('view-chart').classList.contains('hidden')) {
+            tvChart.resize(container.clientWidth, 390);
+          }
+        });
+      }
+      tvChart.resize(container.clientWidth, 390);
+    }
+
+    function updateChartView() {
+      if (!tvChart) return;
+
+      const portIdx = portfolio.findIndex(a => a.ticker === selectedTicker);
+      const portAsset = portIdx >= 0 ? portfolio[portIdx] : null;
+      const watchAsset = watchlist.find(w => w.ticker === selectedTicker);
+
+      const titleEl = document.getElementById('chart-ticker-title');
+      const badgeEl = document.getElementById('chart-pos-badge');
+      const sourceBadgeEl = document.getElementById('chart-source-badge');
+      const nameEl = document.getElementById('chart-company-name');
+      const priceEl = document.getElementById('chart-current-price');
+      const changeEl = document.getElementById('chart-day-change');
+      const riskControlsBox = document.getElementById('chart-risk-controls');
+      const stratBox = document.getElementById('chart-strategy-box');
+
+      // Remove linhas anteriores antes de redesenhar
+      if (avgPriceLine) {
+        candleSeries.removePriceLine(avgPriceLine);
+        avgPriceLine = null;
+      }
+      if (stopPriceLine) {
+        candleSeries.removePriceLine(stopPriceLine);
+        stopPriceLine = null;
+      }
+      if (targetPriceLine) {
+        candleSeries.removePriceLine(targetPriceLine);
+        targetPriceLine = null;
+      }
+
+      if (portAsset) {
+        const m = calcMetrics(portAsset);
+        titleEl.textContent = portAsset.ticker;
+        nameEl.textContent = `${portAsset.name} • 1D • BMFBOVESPA`;
+        priceEl.textContent = formatBRL(portAsset.currentPrice);
+
+        badgeEl.textContent = m.isShort ? '▼ POSIÇÃO VENDIDA (SHORT)' : '▲ POSIÇÃO COMPRADA (LONG)';
+        badgeEl.className = m.isShort
+          ? 'text-xs px-2.5 py-0.5 rounded-full font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40'
+          : 'text-xs px-2.5 py-0.5 rounded-full font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/40';
+
+        changeEl.innerHTML = `
+          Ação Hoje: <span class="${m.stockDayDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatPct(m.stockDayPct, true)}</span> |
+          Seu Bolso Hoje: <strong class="${m.finDayPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatBRL(m.finDayPL, true)} (${formatPct(m.finDayPct, true)})</strong>
+        `;
+
+        let candlesToPlot = [];
+        if (portAsset.historicalCandles && portAsset.historicalCandles.length > 0) {
+          candlesToPlot = JSON.parse(JSON.stringify(portAsset.historicalCandles));
+          const last = candlesToPlot[candlesToPlot.length - 1];
+          last.close = portAsset.currentPrice;
+          if (portAsset.currentPrice > last.high) last.high = portAsset.currentPrice;
+          if (portAsset.currentPrice < last.low) last.low = portAsset.currentPrice;
+          sourceBadgeEl.textContent = 'Dados Históricos Oficiais B3 (Brapi)';
+          sourceBadgeEl.className = 'text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50';
+        } else {
+          candlesToPlot = generateSimulatedCandles(portAsset.ticker, portAsset.currentPrice, portAsset.prevClose);
+          sourceBadgeEl.textContent = 'Candles Diários (1D)';
+          sourceBadgeEl.className = 'text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400';
+        }
+
+        candleSeries.setData(candlesToPlot);
+
+        // 1. Linha Tracejada: Preço Médio (PM)
+        if (portAsset.avgPrice > 0) {
+          avgPriceLine = candleSeries.createPriceLine({
+            price: portAsset.avgPrice,
+            color: m.isShort ? '#f59e0b' : '#38bdf8',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: m.isShort ? `PM Venda (${formatBRL(portAsset.avgPrice)})` : `PM Compra (${formatBRL(portAsset.avgPrice)})`
+          });
+        }
+
+        // 2. Linha Vermelha Pontilhada: Preço de Stop Loss / Stop Gain
+        if (m.stopPrice > 0) {
+          stopPriceLine = candleSeries.createPriceLine({
+            price: m.stopPrice,
+            color: '#f43f5e',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dotted,
+            axisLabelVisible: true,
+            title: `STOP ${formatBRL(m.stopPrice)} (${formatBRL(m.stopFromCurrPL, true)})`
+          });
+        }
+
+        // 3. Linha Verde Pontilhada: Preço de Alvo (Gain)
+        if (m.targetPrice > 0) {
+          targetPriceLine = candleSeries.createPriceLine({
+            price: m.targetPrice,
+            color: '#10b981',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dotted,
+            axisLabelVisible: true,
+            title: `ALVO ${formatBRL(m.targetPrice)} (${formatBRL(m.targetFromCurrPL, true)})`
+          });
+        }
+
+        // Controles interativos de Stop Loss e Alvo abaixo do gráfico
+        riskControlsBox.classList.remove('hidden');
+        riskControlsBox.innerHTML = `
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <span>🎛️ Ajustar Linhas no Gráfico (${portAsset.ticker}):</span>
+              <span class="text-[11px] font-normal text-slate-400">Risco/Retorno: <strong class="text-sky-300">1 : ${m.rrRatio > 0 ? m.rrRatio.toFixed(1) : '0.0'}</strong></span>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="flex items-center gap-1.5 text-xs">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
+                <span class="text-rose-300 font-medium">Stop (R$):</span>
+                <input type="number" step="0.01" value="${m.stopPrice}"
+                  onchange="updateStopPrice(${portIdx}, this.value)"
+                  class="w-20 bg-slate-950 border border-rose-700 rounded px-2 py-1 text-xs font-bold text-rose-200 focus:outline-none" />
+              </div>
+              <div class="flex items-center gap-1.5 text-xs">
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+                <span class="text-emerald-300 font-medium">Alvo (R$):</span>
+                <input type="number" step="0.01" value="${m.targetPrice}"
+                  onchange="updateTargetPrice(${portIdx}, this.value)"
+                  class="w-20 bg-slate-950 border border-emerald-700 rounded px-2 py-1 text-xs font-bold text-emerald-200 focus:outline-none" />
+              </div>
+              <button onclick="setStopAtBreakeven(${portIdx})"
+                class="px-2.5 py-1 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-200 border border-indigo-700 text-xs font-semibold transition">
+                Stop no PM (${formatBRL(portAsset.avgPrice)})
+              </button>
+            </div>
+          </div>
+        `;
+
+        if (m.isShort) {
+          stratBox.innerHTML = `
+            <div class="font-bold text-amber-300 flex items-center gap-1.5">
+              <span>📉 Estratégia Vendida (Short) em ${portAsset.ticker} (-${portAsset.qty} ações)</span>
+            </div>
+            <p class="text-slate-300 leading-relaxed">
+              • <strong>Linha Laranja Tracejada (${formatBRL(portAsset.avgPrice)}):</strong> Sua entrada vendida na alta.<br/>
+              • <strong>Linha Vermelha (${formatBRL(m.stopPrice)}):</strong> Seu Stop de recompra caso a ação volte a subir. Impacto a partir de hoje: <strong class="text-rose-400">${formatBRL(m.stopFromCurrPL, true)}</strong> (Resultado final vs. Entrada: <strong class="${m.stopFromAvgPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatBRL(m.stopFromAvgPL, true)}</strong>).<br/>
+              • <strong>Linha Verde (${formatBRL(m.targetPrice)}):</strong> Seu Alvo de lucro na queda. Ganho adicional até o alvo: <strong class="text-emerald-400">${formatBRL(m.targetFromCurrPL, true)}</strong> (Lucro total no alvo: <strong class="text-emerald-400">${formatBRL(m.targetFromAvgPL, true)}</strong>).
+            </p>
+          `;
+        } else {
+          stratBox.innerHTML = `
+            <div class="font-bold text-sky-300">📈 Estratégia Comprada (Long) em ${portAsset.ticker} (${portAsset.qty} ações)</div>
+            <p class="text-slate-300 leading-relaxed">
+              • <strong>Linha Azul Tracejada (${formatBRL(portAsset.avgPrice)}):</strong> Seu Preço Médio de compra.<br/>
+              • <strong>Linha Vermelha (${formatBRL(m.stopPrice)}):</strong> Seu Stop Loss para limitar perdas caso caia mais. Risco a partir de hoje: <strong class="text-rose-400">${formatBRL(m.stopFromCurrPL, true)}</strong>.<br/>
+              • <strong>Linha Verde (${formatBRL(m.targetPrice)}):</strong> Seu Alvo de realização de lucro. Potencial de ganho a partir de hoje: <strong class="text-emerald-400">${formatBRL(m.targetFromCurrPL, true)}</strong>.
+            </p>
+          `;
+        }
+      } else if (watchAsset) {
+        riskControlsBox.classList.add('hidden');
+        titleEl.textContent = watchAsset.ticker;
+        nameEl.textContent = `${watchAsset.name} • 1D • BMFBOVESPA`;
+        badgeEl.textContent = 'WATCHLIST B3';
+        badgeEl.className = 'text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-800 text-slate-300';
+        priceEl.textContent = watchAsset.ticker === 'IBOV'
+          ? watchAsset.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) + ' pts'
+          : formatBRL(watchAsset.price);
+        changeEl.innerHTML = `<span class="${watchAsset.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatPct(watchAsset.changePct, true)} no dia</span>`;
+
+        const candles = (watchAsset.historicalCandles && watchAsset.historicalCandles.length > 0)
+          ? watchAsset.historicalCandles
+          : generateSimulatedCandles(watchAsset.ticker, watchAsset.price, watchAsset.prevClose);
+        candleSeries.setData(candles);
+        stratBox.innerHTML = `<div class="text-slate-400">Ativo acompanhado na sua lista do TradingView/Clear. Sem posição aberta na carteira no momento.</div>`;
+      }
+
+      tvChart.timeScale().fitContent();
+      renderWatchlist();
+    }
+
+    function renderWatchlist() {
+      const container = document.getElementById('watchlist-container');
+      container.innerHTML = '';
+
+      const portHeader = document.createElement('div');
+      portHeader.className = 'text-[11px] font-bold uppercase tracking-wider text-sky-400 pb-1 px-2';
+      portHeader.textContent = 'Na Minha Carteira';
+      container.appendChild(portHeader);
+
+      portfolio.forEach(a => {
+        const m = calcMetrics(a);
+        const active = selectedTicker === a.ticker ? 'bg-slate-800/90 border-l-4 border-sky-400' : 'hover:bg-slate-900/70';
+        const div = document.createElement('div');
+        div.className = `p-2.5 rounded-lg cursor-pointer flex justify-between items-center transition ${active}`;
+        div.onclick = () => { selectedTicker = a.ticker; updateChartView(); };
+        div.innerHTML = `
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="font-bold text-sm text-white">${a.ticker}</span>
+              <span class="text-[10px] px-1.5 py-0.2 rounded font-semibold ${m.isShort ? 'bg-amber-500/20 text-amber-300' : 'bg-sky-500/20 text-sky-300'}">
+                ${m.isShort ? 'SHORT' : 'LONG'}
+              </span>
+            </div>
+            <span class="text-[11px] text-slate-400 block truncate max-w-[155px]">
+              Stop: <span class="text-rose-400">${formatBRL(m.stopPrice)}</span> | Alvo: <span class="text-emerald-400">${formatBRL(m.targetPrice)}</span>
+            </span>
+          </div>
+          <div class="text-right">
+            <div class="text-sm font-semibold text-white">${formatBRL(a.currentPrice)}</div>
+            <div class="text-[11px] ${m.finDayPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+              Hoje: ${formatBRL(m.finDayPL, true)}
+            </div>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+
+      const watchHeader = document.createElement('div');
+      watchHeader.className = 'text-[11px] font-bold uppercase tracking-wider text-slate-500 pt-3 pb-1 px-2';
+      watchHeader.textContent = 'Lista de Observação (B3)';
+      container.appendChild(watchHeader);
+
+      watchlist.forEach(w => {
+        const active = selectedTicker === w.ticker ? 'bg-slate-800/90 border-l-4 border-sky-400' : 'hover:bg-slate-900/70';
+        const div = document.createElement('div');
+        div.className = `p-2.5 rounded-lg cursor-pointer flex justify-between items-center transition ${active}`;
+        div.onclick = () => { selectedTicker = w.ticker; updateChartView(); };
+        div.innerHTML = `
+          <div>
+            <span class="font-bold text-sm text-slate-200">${w.ticker}</span>
+            <span class="text-[11px] text-slate-400 block truncate max-w-[145px]">${w.name}</span>
+          </div>
+          <div class="text-right">
+            <div class="text-sm font-medium text-slate-200">${w.ticker === 'IBOV' ? w.price.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : formatBRL(w.price)}</div>
+            <div class="text-[11px] ${w.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatPct(w.changePct, true)}</div>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // Inicialização ao abrir a página
+    window.onload = function () {
+      loadStateFromStorage();
+      renderPortfolio();
+      const savedToken = localStorage.getItem('brapi_token_djan');
+      if (savedToken) {
+        syncWithBrapi(true);
+      }
+    };
+  </script>
+  <script>
+    if ("serviceWorker" in navigator && location.protocol !== "file:") {
+      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(err => console.warn("SW indisponível", err)));
+    }
+  </script>
+</body>
+</html>
