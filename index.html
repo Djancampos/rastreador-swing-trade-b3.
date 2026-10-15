@@ -1,14 +1,10 @@
+```html
 <!DOCTYPE html>
 <html lang="pt-BR" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Djan • Swing Trade B3</title>
-  <meta name="theme-color" content="#060916">
-  <meta name="description" content="Rastreador de carteira B3, gestão de risco, Stop Loss e alvo de Gain.">
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="icon" href="./icons/icon-192.png" type="image/png">
-  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <title>Djan • Swing Trade B3, Stop Loss & API Tracker</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Fonte Inter -->
@@ -1592,10 +1588,6 @@
       }
     };
   </script>
-  <script>
-    if ("serviceWorker" in navigator && location.protocol !== "file:") {
-      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(err => console.warn("SW indisponível", err)));
-    }
-  </script>
 </body>
 </html>
+```
